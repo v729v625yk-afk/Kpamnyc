@@ -1504,3 +1504,156 @@ def profile(message):
         bot.send_photo(message.chat.id, img)
 
     os.remove(path)
+def mine(message):
+
+    uid = message.from_user.id
+    user = get_user(uid)
+
+    now = time.time()
+
+    if uid in cooldowns["mine"]:
+
+        left = MINE_COOLDOWN - (now - cooldowns["mine"][uid])
+
+        if left > 0:
+
+            h = int(left // 3600)
+            m = int((left % 3600) // 60)
+
+            bot.send_message(
+                message.chat.id,
+                f"⏳ Шахта перезаряжается\n⌛ {h}ч {m}м"
+            )
+            return
+
+    lvl = user[5]
+
+    if lvl > 8:
+        lvl = 8
+
+    resource_map = {
+        1: ("coal", "🪨 Уголь", 5),
+        2: ("iron", "⛓ Железо", 10),
+        3: ("gold", "💛 Золото", 20),
+        4: ("diamond", "💎 Алмазы", 35),
+        5: ("uranium", "☢ Уран", 50),
+        6: ("hellstone", "🔥 Адский кристалл", 80),
+        7: ("energy", "⚡ Энергия", 120),
+        8: ("moon", "🌙 Лунный камень", 200)
+    }
+
+    column, name, price = resource_map[lvl]
+
+    amount = random.randint(3, 8)
+
+    coins = amount * price
+
+    xp = random.randint(5, 15)
+
+    cur.execute(f"""
+        UPDATE users
+        SET
+            {column} = {column} + ?,
+            coins = coins + ?,
+            xp = xp + ?
+        WHERE user_id = ?
+    """, (amount, coins, xp, uid))
+
+    db.commit()
+
+    cooldowns["mine"][uid] = now
+
+    bot.send_message(
+        message.chat.id,
+        f"""
+⛏ ДОБЫЧА
+
+{name}: +{amount}
+
+💰 Монеты:
++{coins}
+
+⚡ XP:
++{xp}
+"""
+    )
+
+
+def sell(message):
+
+    uid = message.from_user.id
+
+    u = get_user(uid)
+
+    resources = [
+        ("coal", 9, 5),
+        ("iron", 10, 10),
+        ("gold", 11, 20),
+        ("diamond", 12, 35),
+        ("uranium", 13, 50),
+        ("hellstone", 14, 80),
+        ("energy", 15, 120),
+        ("moon", 16, 200)
+    ]
+
+    total = 0
+
+    for name, index, price in resources:
+
+        amount = u[index]
+
+        total += amount * price
+
+        cur.execute(f"""
+            UPDATE users
+            SET {name} = 0
+            WHERE user_id = ?
+        """, (uid,))
+
+    cur.execute("""
+        UPDATE users
+        SET coins = coins + ?
+        WHERE user_id = ?
+    """, (total, uid))
+
+    db.commit()
+
+    bot.send_message(
+        message.chat.id,
+        f"💱 Продажа ресурсов\n\n💰 +{total} монет"
+    )
+
+
+def profile(message):
+
+    uid = message.from_user.id
+
+    u = get_user(uid)
+
+    text = f'''
+👤 ПРОФИЛЬ
+
+⚡ XP: {u[1]}
+📈 Уровень: {u[2]}
+💰 Монеты: {u[3]}
+💬 Сообщения: {u[4]}
+⛏ Шахта: {u[5]}
+
+🪨 Уголь: {u[9]}
+⛓ Железо: {u[10]}
+💛 Золото: {u[11]}
+💎 Алмазы: {u[12]}
+☢ Уран: {u[13]}
+🔥 Адский: {u[14]}
+⚡ Энергия: {u[15]}
+🌙 Лунный: {u[16]}
+'''
+
+    bot.send_message(message.chat.id, text)
+    print("BOT STARTED")
+
+bot.infinity_polling(
+    timeout=60,
+    long_polling_timeout=60,
+    skip_pending=True
+)
