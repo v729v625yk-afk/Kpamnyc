@@ -848,3 +848,292 @@ conn.commit()
 conn.close()
 
 print("Статистика всех игроков сброшена.")
+import sqlite3
+
+conn = sqlite3.connect("database.db", check_same_thread=False)
+cursor = conn.cursor()
+
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS players (
+    user_id INTEGER PRIMARY KEY,
+    nickname TEXT,
+    coins REAL DEFAULT 0,
+    xp REAL DEFAULT 0,
+    level INTEGER DEFAULT 0,
+    messages INTEGER DEFAULT 0,
+    mine_lvl REAL DEFAULT 1,
+    coal INTEGER DEFAULT 0,
+    iron INTEGER DEFAULT 0,
+    gold INTEGER DEFAULT 0
+)
+""")
+
+conn.commit()
+print("BOT STARTED STABLE VERSION")
+bot.infinity_polling(skip_pending=True)
+# =========================
+# NEW MINE SYSTEM
+# =========================
+
+def mine(message):
+    uid = message.from_user.id
+    u = get_user(uid)
+
+    now = time.time()
+
+    # cooldown
+    if uid in cooldowns["mine"]:
+        left = MINE_COOLDOWN - (now - cooldowns["mine"][uid])
+
+        if left > 0:
+            h = int(left // 3600)
+            m = int((left % 3600) // 60)
+
+            bot.send_message(
+                message.chat.id,
+                f"⏳ Шахта перезаряжается\n\n⌛ Осталось: {h}ч {m}м"
+            )
+            return
+
+    # уровень шахты
+    lvl = min(u[5], 8)
+
+    resource_name, price = MINE_RESOURCES[lvl]
+
+    amount = random.randint(3, 8)
+
+    # x2 талисман
+    if now < u[17]:
+        amount *= 2
+
+    # ресурс
+    resource_column = {
+        1: "coal",
+        2: "iron",
+        3: "gold",
+        4: "diamond",
+        5: "uranium",
+        6: "hellstone",
+        7: "energy",
+        8: "moon"
+    }[lvl]
+
+    # добавляем ресурс
+    cur.execute(f"""
+        UPDATE users
+        SET {resource_column} = {resource_column} + ?
+        WHERE user_id = ?
+    """, (amount, uid))
+
+    # XP
+    xp_gain = random.randint(5, 15)
+
+    cur.execute("""
+        UPDATE users
+        SET xp = xp + ?
+        WHERE user_id = ?
+    """, (xp_gain, uid))
+
+    # монеты
+    money = amount * price
+
+    cur.execute("""
+        UPDATE users
+        SET coins = coins + ?
+        WHERE user_id = ?
+    """, (money, uid))
+
+    # LEVEL UP
+    updated = get_user(uid)
+
+    levelup = ""
+
+    if updated[1] >= updated[2] * 120:
+
+        cur.execute("""
+            UPDATE users
+            SET
+                level = level + 1,
+                xp = 0
+            WHERE user_id = ?
+        """, (uid,))
+
+        levelup = "\n\n🔥 LEVEL UP!"
+
+    # босс
+    boss_text = ""
+
+    if random.randint(1, 100) <= 15:
+
+        boss = random.choice(BOSSES)
+
+        reward = boss[1]
+
+        cur.execute("""
+            UPDATE users
+            SET coins = coins + ?
+            WHERE user_id = ?
+        """, (reward, uid))
+
+        boss_text = f"""
+
+👹 БОСС ПОБЕЖДЁН
+
+{boss[0]}
+
+💰 +{reward} монет
+"""
+
+    # талисман
+    talisman_text = ""
+
+    if random.randint(1, 1000) == 777:
+
+        talisman_until = now + 43200
+
+        cur.execute("""
+            UPDATE users
+            SET talisman_until = ?
+            WHERE user_id = ?
+        """, (talisman_until, uid))
+
+        talisman_text = """
+
+🪬 НАЙДЕН ТАЛИСМАН
+
+🔥 x2 ресурсы на 12 часов
+"""
+
+    db.commit()
+
+    cooldowns["mine"][uid] = now
+
+    bot.send_message(
+        message.chat.id,
+        f"""
+⛏ ШАХТА
+
+{resource_name}: +{amount}
+
+💰 Продано:
++{money} монет
+
+⚡ XP:
++{xp_gain}
+
+⬆ Уровень шахты:
+{lvl}/8
+{boss_text}
+{talisman_text}
+{levelup}
+"""
+    )
+
+
+# =========================
+# NEW PROFILE SYSTEM
+# =========================
+
+def profile(message):
+
+    uid = message.from_user.id
+    u = get_user(uid)
+
+    width = 1000
+    height = 550
+
+    bg = Image.new("RGB", (width, height), (18, 18, 30))
+    draw = ImageDraw.Draw(bg)
+
+    FONT = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
+    FONT_BOLD = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+
+    font_title = ImageFont.truetype(FONT_BOLD, 42)
+    font_text = ImageFont.truetype(FONT, 28)
+
+    # аватарка
+    photos = bot.get_user_profile_photos(uid)
+
+    if photos.total_count > 0:
+
+        file_id = photos.photos[0][0].file_id
+
+        file_info = bot.get_file(file_id)
+
+        file_url = f"https://api.telegram.org/file/bot{TOKEN}/{file_info.file_path}"
+
+        response = requests.get(file_url)
+
+        avatar = Image.open(BytesIO(response.content)).convert("RGB")
+
+        avatar = avatar.resize((220, 220))
+
+        bg.paste(avatar, (50, 150))
+
+    # ник
+    name = u[8] if u[8] else "Игрок"
+
+    draw.text(
+        (320, 40),
+        name,
+        fill="white",
+        font=font_title
+    )
+
+    # статистика
+    stats = [
+        f"⚡ XP: {u[1]}",
+        f"📈 Уровень: {u[2]}",
+        f"💰 Монеты: {u[3]}",
+        f"💬 Сообщения: {u[4]}",
+        f"⛏ Шахта: {u[5]}/8",
+        f"🏦 Банк: {u[6]}",
+        f"🪨 Уголь: {u[9]}",
+        f"⛓ Железо: {u[10]}",
+        f"💛 Золото: {u[11]}",
+        f"💎 Алмазы: {u[12]}",
+    ]
+
+    y = 140
+
+    for stat in stats:
+
+        draw.text(
+            (320, y),
+            stat,
+            fill=(230, 230, 230),
+            font=font_text
+        )
+
+        y += 40
+
+    # XP BAR
+    max_xp = max(u[2] * 120, 1)
+
+    percent = min(u[1] / max_xp, 1)
+
+    draw.rectangle(
+        (320, 500, 850, 530),
+        fill=(50, 50, 50)
+    )
+
+    draw.rectangle(
+        (320, 500, 320 + int(530 * percent), 530),
+        fill=(0, 255, 120)
+    )
+
+    draw.text(
+        (320, 460),
+        f"XP {u[1]} / {max_xp}",
+        fill="white",
+        font=font_text
+    )
+
+    path = f"profile_{uid}.png"
+
+    bg.save(path)
+
+    with open(path, "rb") as img:
+        bot.send_photo(message.chat.id, img)
+
+    os.remove(path)
