@@ -1149,3 +1149,358 @@ while True:
         bot.send_photo(message.chat.id, img)
 
     os.remove(path)
+print("BOT STARTED STABLE VERSION")
+bot.infinity_polling(skip_pending=True)
+# =========================================
+# STABLE MINE SYSTEM
+# =========================================
+
+def mine(message):
+
+    uid = message.from_user.id
+    user = get_user(uid)
+
+    now = time.time()
+
+    # cooldown
+    if uid in cooldowns["mine"]:
+
+        left = MINE_COOLDOWN - (now - cooldowns["mine"][uid])
+
+        if left > 0:
+
+            hours = int(left // 3600)
+            minutes = int((left % 3600) // 60)
+
+            bot.send_message(
+                message.chat.id,
+                f"""
+⏳ Шахта ещё не готова
+
+⌛ Осталось:
+{hours}ч {minutes}м
+"""
+            )
+            return
+
+    mine_lvl = min(user[5], 8)
+
+    resource_name, resource_price = MINE_RESOURCES[mine_lvl]
+
+    amount = random.randint(3, 10)
+
+    # талисман x2
+    if now < user[17]:
+        amount *= 2
+
+    resource_column = {
+        1: "coal",
+        2: "iron",
+        3: "gold",
+        4: "diamond",
+        5: "uranium",
+        6: "hellstone",
+        7: "energy",
+        8: "moon"
+    }[mine_lvl]
+
+    # добавляем ресурс
+    cur.execute(f"""
+        UPDATE users
+        SET {resource_column} = {resource_column} + ?
+        WHERE user_id = ?
+    """, (amount, uid))
+
+    # монеты
+    coins_earned = amount * resource_price
+
+    cur.execute("""
+        UPDATE users
+        SET coins = coins + ?
+        WHERE user_id = ?
+    """, (coins_earned, uid))
+
+    # XP
+    xp_gain = random.randint(5, 15)
+
+    cur.execute("""
+        UPDATE users
+        SET xp = xp + ?
+        WHERE user_id = ?
+    """, (xp_gain, uid))
+
+    db.commit()
+
+    # LEVEL UP
+    updated = get_user(uid)
+
+    levelup_text = ""
+
+    need_xp = updated[2] * 120
+
+    if updated[1] >= need_xp:
+
+        cur.execute("""
+            UPDATE users
+            SET
+                level = level + 1,
+                xp = 0
+            WHERE user_id = ?
+        """, (uid,))
+
+        db.commit()
+
+        levelup_text = "\n🔥 LEVEL UP!"
+
+    # боссы
+    boss_text = ""
+
+    if random.randint(1, 100) <= 15:
+
+        boss = random.choice(BOSSES)
+
+        reward = boss[1]
+
+        cur.execute("""
+            UPDATE users
+            SET coins = coins + ?
+            WHERE user_id = ?
+        """, (reward, uid))
+
+        db.commit()
+
+        boss_text = f"""
+
+👹 БОСС ПОБЕЖДЁН
+
+{boss[0]}
+
+💰 Награда:
++{reward} монет
+"""
+
+    # талисман
+    talisman_text = ""
+
+    if random.randint(1, 1000) == 777:
+
+        talisman_until = now + 43200
+
+        cur.execute("""
+            UPDATE users
+            SET talisman_until = ?
+            WHERE user_id = ?
+        """, (talisman_until, uid))
+
+        db.commit()
+
+        talisman_text = """
+
+🪬 НАЙДЕН ТАЛИСМАН
+
+🔥 x2 ресурсы на 12 часов
+"""
+
+    cooldowns["mine"][uid] = now
+
+    bot.send_message(
+        message.chat.id,
+        f"""
+⛏ ДОБЫЧА
+
+{resource_name}: +{amount}
+
+💰 Получено:
++{coins_earned} монет
+
+⚡ XP:
++{xp_gain}
+
+⬆ Уровень шахты:
+{mine_lvl}/8
+{boss_text}
+{talisman_text}
+{levelup_text}
+"""
+    )
+
+
+# =========================================
+# SELL SYSTEM
+# =========================================
+
+def sell(message):
+
+    uid = message.from_user.id
+    u = get_user(uid)
+
+    resources = [
+        ("coal", 9, 5, "🪨 Уголь"),
+        ("iron", 10, 10, "⛓ Железо"),
+        ("gold", 11, 20, "💛 Золото"),
+        ("diamond", 12, 35, "💎 Алмазы"),
+        ("uranium", 13, 50, "☢ Уран"),
+        ("hellstone", 14, 80, "🔥 Адский"),
+        ("energy", 15, 120, "⚡ Энергия"),
+        ("moon", 16, 200, "🌙 Лунный"),
+    ]
+
+    total = 0
+    text = ""
+
+    for name, index, price, emoji_name in resources:
+
+        amount = u[index]
+
+        if amount > 0:
+
+            earned = amount * price
+
+            total += earned
+
+            text += f"\n{emoji_name}: {amount} шт. → +{earned}"
+
+            cur.execute(f"""
+                UPDATE users
+                SET {name} = 0
+                WHERE user_id = ?
+            """, (uid,))
+
+    if total <= 0:
+
+        bot.send_message(
+            message.chat.id,
+            "❌ У тебя нет ресурсов"
+        )
+        return
+
+    cur.execute("""
+        UPDATE users
+        SET coins = coins + ?
+        WHERE user_id = ?
+    """, (total, uid))
+
+    db.commit()
+
+    bot.send_message(
+        message.chat.id,
+        f"""
+💱 ПРОДАЖА РЕСУРСОВ
+{text}
+
+━━━━━━━━━━━━━━
+💰 ИТОГО:
++{total} монет
+"""
+    )
+
+
+# =========================================
+# BEAUTIFUL PROFILE
+# =========================================
+
+def profile(message):
+
+    uid = message.from_user.id
+
+    u = get_user(uid)
+
+    width = 1100
+    height = 550
+
+    bg = Image.new("RGB", (width, height), (15, 15, 25))
+
+    draw = ImageDraw.Draw(bg)
+
+    FONT = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
+    FONT_BOLD = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+
+    font_big = ImageFont.truetype(FONT_BOLD, 42)
+    font_small = ImageFont.truetype(FONT, 28)
+
+    # аватарка
+    photos = bot.get_user_profile_photos(uid)
+
+    if photos.total_count > 0:
+
+        file_id = photos.photos[0][0].file_id
+
+        file_info = bot.get_file(file_id)
+
+        file_url = f"https://api.telegram.org/file/bot{TOKEN}/{file_info.file_path}"
+
+        response = requests.get(file_url)
+
+        avatar = Image.open(BytesIO(response.content)).convert("RGB")
+
+        avatar = avatar.resize((230, 230))
+
+        bg.paste(avatar, (60, 140))
+
+    # имя
+    name = u[8] if u[8] else "Игрок"
+
+    draw.text(
+        (340, 40),
+        f"{name}",
+        fill="white",
+        font=font_big
+    )
+
+    stats = [
+        f"⚡ XP: {u[1]}",
+        f"📈 Уровень: {u[2]}",
+        f"💰 Монеты: {u[3]}",
+        f"💬 Сообщения: {u[4]}",
+        f"⛏ Шахта: {u[5]}/8",
+        f"🏦 Банк: {u[6]}",
+        f"🪨 Уголь: {u[9]}",
+        f"⛓ Железо: {u[10]}",
+        f"💛 Золото: {u[11]}",
+        f"💎 Алмазы: {u[12]}"
+    ]
+
+    y = 140
+
+    for stat in stats:
+
+        draw.text(
+            (340, y),
+            stat,
+            fill=(230, 230, 230),
+            font=font_small
+        )
+
+        y += 40
+
+    # XP BAR
+    max_xp = max(u[2] * 120, 1)
+
+    percent = min(u[1] / max_xp, 1)
+
+    draw.rectangle(
+        (340, 500, 900, 530),
+        fill=(50, 50, 50)
+    )
+
+    draw.rectangle(
+        (340, 500, 340 + int(560 * percent), 530),
+        fill=(0, 255, 120)
+    )
+
+    draw.text(
+        (340, 455),
+        f"XP {u[1]} / {max_xp}",
+        fill="white",
+        font=font_small
+    )
+
+    path = f"profile_{uid}.png"
+
+    bg.save(path)
+
+    with open(path, "rb") as img:
+
+        bot.send_photo(message.chat.id, img)
+
+    os.remove(path)
