@@ -1128,7 +1128,19 @@ def profile(message):
         fill="white",
         font=font_text
     )
+print("BOT STARTED STABLE VERSION")
 
+while True:
+    try:
+        bot.infinity_polling(
+            timeout=60,
+            long_polling_timeout=60,
+            skip_pending=True
+        )
+
+    except Exception as e:
+        print(e)
+        time.sleep(5)
     path = f"profile_{uid}.png"
 
     bg.save(path)
