@@ -821,3 +821,30 @@ def wipe(message):
 
 print("BOT STARTED STABLE VERSION")
 bot.infinity_polling(skip_pending=True)
+# Пример для SQLite: сбросить статистику всех игроков,
+# кроме игрока с ником "Дьявол"
+
+import sqlite3
+
+conn = sqlite3.connect("database.db")
+cursor = conn.cursor()
+
+# Обнуление статистики
+cursor.execute("""
+UPDATE players
+SET
+    coins = 0,
+    xp = 0,
+    level = 0,
+    messages = 0,
+    mine_lvl = 0,
+    coal = 0,
+    iron = 0,
+    gold = 0
+WHERE nickname != 'Дьявол'
+""")
+
+conn.commit()
+conn.close()
+
+print("Статистика всех игроков сброшена.")
