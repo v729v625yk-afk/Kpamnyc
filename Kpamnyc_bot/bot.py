@@ -1,5 +1,8 @@
 import asyncio
 
+from dotenv import load_dotenv
+load_dotenv()
+
 from aiogram import Bot, Dispatcher
 
 from config import BOT_TOKEN
